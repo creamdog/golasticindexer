@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/crowdmob/goamz/aws"
 	"github.com/crowdmob/goamz/s3"
@@ -9,18 +10,21 @@ import (
 	"log"
 	"os"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 )
 
 type LogFilePuller struct {
-	auth        aws.Auth
-	bucket      string
-	marker      string
-	prefix      string
-	tmpDir      string
-	fileChannel chan string
-	statefile   string
+	auth          aws.Auth
+	bucket        string
+	marker        string
+	prefix        string
+	tmpDir        string
+	fileChannel   chan string
+	statefile     string
+	lastDate      time.Time
+	processedKeys map[string]time.Time
 }
 
 func NewLogFilePuller(fileChannel chan string, config map[string]interface{}) *LogFilePuller {
@@ -34,13 +38,14 @@ func NewLogFilePuller(fileChannel chan string, config map[string]interface{}) *L
 	os.MkdirAll(tmpdir, 0700)
 
 	return &LogFilePuller{
-		auth:        aws.Auth{AccessKey: access_key, SecretKey: secret_key},
-		marker:      "",
-		prefix:      prefix,
-		bucket:      bucket,
-		tmpDir:      tmpdir,
-		statefile:   "marker.txt",
-		fileChannel: fileChannel}
+		auth:          aws.Auth{AccessKey: access_key, SecretKey: secret_key},
+		marker:        "",
+		prefix:        prefix,
+		bucket:        bucket,
+		tmpDir:        tmpdir,
+		statefile:     "marker.txt",
+		fileChannel:   fileChannel,
+		processedKeys: make(map[string]time.Time)}
 }
 
 func (puller *LogFilePuller) RestoreState() {
@@ -49,7 +54,18 @@ func (puller *LogFilePuller) RestoreState() {
 		if err != nil {
 			panic(err)
 		}
-		puller.marker = string(content)
+
+		var state map[string]interface{}
+		json.Unmarshal([]byte(content), &state)
+
+		tmp, err := time.Parse(time.RFC3339, state["time"].(string))
+		if err != nil {
+			panic(err)
+		}
+		puller.lastDate = tmp
+		puller.marker = state["marker"].(string)
+	} else {
+		log.Printf("%v", err)
 	}
 }
 
@@ -58,7 +74,12 @@ func (puller *LogFilePuller) StoreState() {
 	if err != nil {
 		panic(err)
 	}
-	if _, err = f.WriteString(puller.marker); err != nil {
+	state := map[string]interface{}{
+		"marker": puller.marker,
+		"time":   puller.lastDate,
+	}
+	b, _ := json.Marshal(state)
+	if _, err = f.WriteString(string(b)); err != nil {
 		panic(err)
 	}
 	f.Close()
@@ -75,6 +96,8 @@ func (puller *LogFilePuller) Run() {
 	}
 	sevenDaysAgo := t.UTC().Add(24 * 7 * -time.Hour)
 
+	keyDateRegexp := regexp.MustCompile("^/?nginx/access/(?P<date>[0-9-]+)/.+$")
+
 	log.Printf("sevenDaysAgo: %s", sevenDaysAgo.Format(time.RFC3339))
 
 	for {
@@ -84,6 +107,7 @@ func (puller *LogFilePuller) Run() {
 		bucket := s3client.Bucket(puller.bucket)
 		bucket.ReadTimeout = time.Second * 5
 		bucket.ConnectTimeout = time.Second * 2
+		//result, err := bucket.List(puller.prefix, "", puller.marker, 1000)
 		result, err := bucket.List(puller.prefix, "", puller.marker, 1000)
 		if err != nil {
 			fmt.Println(err.Error())
@@ -95,11 +119,45 @@ func (puller *LogFilePuller) Run() {
 
 			puller.marker = value.Key
 
-			fileTime, _ := time.Parse(time.RFC3339, value.LastModified)
-			if fileTime.Unix() < sevenDaysAgo.Unix() {
-				log.Printf("skipping file: %s, modified: %s", value.Key, value.LastModified)
+			keyDateMatch := keyDateRegexp.FindStringSubmatch(value.Key)
+			log.Printf("%v -> %v", value.Key, keyDateMatch)
+			result := make(map[string]string)
+			for i, name := range keyDateRegexp.SubexpNames() {
+				result[name] = keyDateMatch[i]
+			}
+			keyDate, err := time.Parse("2006-01-02", result["date"])
+			if err != nil {
+				log.Printf("skipping file: %s, modified: %s, err: %v", value.Key, value.LastModified, err)
 				continue
 			}
+
+			if keyDate.Unix() < puller.lastDate.Add(-25*time.Hour).Unix() {
+				log.Printf("skipping file: %s, modified: %s, too old", value.Key, value.LastModified)
+				continue
+			}
+
+			if keyDate.Unix() > puller.lastDate.Unix() {
+				puller.lastDate = keyDate
+			}
+
+			if keyDate.Unix() < sevenDaysAgo.Unix() {
+				log.Printf("skipping file: %s, modified: %s, too old", value.Key, value.LastModified)
+				continue
+			}
+
+			if _, exists := puller.processedKeys[value.Key]; exists {
+				log.Printf("skipping file: %s, modified: %s, already processed", value.Key, value.LastModified)
+			}
+
+			puller.processedKeys[value.Key] = time.Now()
+
+			/*
+				fileTime, _ := time.Parse(time.RFC3339, value.LastModified)
+				if fileTime.Unix() < sevenDaysAgo.Unix() {
+					log.Printf("skipping file: %s, modified: %s", value.Key, value.LastModified)
+					continue
+				}
+			*/
 
 			downloaders <- 1
 			go func(done chan int) {
@@ -122,12 +180,16 @@ func (puller *LogFilePuller) Run() {
 		}
 
 		log.Printf("result.NextMarker: %s", result.NextMarker)
+		log.Printf("puller.lastDate: %v, puller.marker: %v, puller.processedKeys: %v", puller.lastDate, puller.marker, len(puller.processedKeys))
 
-		if result.IsTruncated && result.NextMarker != puller.marker {
+		if result.IsTruncated {
 			log.Printf("listing more: %s", result.NextMarker)
 			puller.marker = result.NextMarker
 		} else {
 			//break
+			puller.marker = ""
+			log.Printf("no more data, sleeping for 5 minutes and starting again")
+			time.Sleep(5 * time.Minute)
 		}
 	}
 }
