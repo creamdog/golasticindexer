@@ -147,6 +147,7 @@ func (puller *LogFilePuller) Run() {
 
 			if _, exists := puller.processedKeys[value.Key]; exists {
 				log.Printf("skipping file: %s, modified: %s, already processed", value.Key, value.LastModified)
+				continue
 			}
 
 			puller.processedKeys[value.Key] = time.Now()
