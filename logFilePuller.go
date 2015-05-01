@@ -65,7 +65,7 @@ func (puller *LogFilePuller) RestoreState() {
 		puller.lastDate = tmp
 		puller.marker = state["marker"].(string)
 	} else {
-		log.Printf("%v", err)
+		errLogger.Printf("%v", err)
 	}
 }
 
@@ -127,7 +127,7 @@ func (puller *LogFilePuller) Run() {
 			}
 			keyDate, err := time.Parse("2006-01-02", result["date"])
 			if err != nil {
-				log.Printf("skipping file: %s, modified: %s, err: %v", value.Key, value.LastModified, err)
+				errLogger.Printf("skipping file: %s, modified: %s, err: %v", value.Key, value.LastModified, err)
 				continue
 			}
 
@@ -170,7 +170,7 @@ func (puller *LogFilePuller) Run() {
 					log.Printf("sending file %s to queue. %v", file, len(puller.fileChannel))
 					puller.fileChannel <- file
 				} else {
-					log.Printf("%v", err)
+					errLogger.Printf("%v", err)
 				}
 			}(downloaders)
 		}

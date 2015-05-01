@@ -8,6 +8,8 @@ import (
 	"os"
 )
 
+var errLogger *log.Logger = log.New(os.Stderr, "ERROR: ", log.Llongfile|log.Ldate|log.Ltime)
+
 func main() {
 
 	config := loadconfig()
@@ -39,7 +41,9 @@ func main() {
 			os.Remove(file.Path)
 		}()
 		indexer := NewElasticSearchClient(config)
-		indexer.Upload(file.Path, file.Index)
+		if err := indexer.Upload(file.Path, file.Index); err != nil {
+			errLogger.Printf("failed to upload file %v -> %v, error: %v", file.Path, file.Index, err)
+		}
 	}
 
 	for {

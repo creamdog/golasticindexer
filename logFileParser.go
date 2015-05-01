@@ -91,6 +91,7 @@ func (line *RawAccessLogLine) ToIndexable(id string, georeader *geoip2.Reader) (
 
 	timestamp, err := time.Parse("02/Jan/2006:15:04:05 -0700", line.LocalTime)
 	if err != nil {
+		errLogger.Printf("%v\n", err)
 		panic(err)
 	}
 
@@ -187,7 +188,9 @@ func (parser *LogFileParser) Watch(fileChannel chan string) {
 			os.Remove(file)
 			<-done
 		}()
-		p.ParseFile(file)
+		if err := p.ParseFile(file); err != nil {
+			errLogger.Printf("unbale to parse file: %v, error: %v", file, err)
+		}
 	}
 
 	timeout := make(chan int, 1)
@@ -215,7 +218,7 @@ func (parser *LogFileParser) ParseFile(filePath string) error {
 
 	file, err := os.Open(filePath)
 	if err != nil {
-		log.Printf("opening file: %s, error: %v", filePath, err)
+		errLogger.Printf("opening file: %s, error: %v", filePath, err)
 		return err
 	}
 	defer file.Close()
@@ -227,7 +230,7 @@ func (parser *LogFileParser) ParseFile(filePath string) error {
 		linenumber++
 
 		if err := scanner.Err(); err != nil {
-			log.Printf("reading file: %s, error: %v", filePath, err)
+			errLogger.Printf("reading file: %s, error: %v", filePath, err)
 			return err
 		}
 
@@ -235,7 +238,7 @@ func (parser *LogFileParser) ParseFile(filePath string) error {
 
 		data, err := parser.ParseLine(line, filePath, linenumber)
 		if err != nil {
-			log.Printf("parsing line: %s, error: %v", line, err)
+			errLogger.Printf("parsing line: %s, error: %v", line, err)
 			continue
 		}
 
@@ -280,11 +283,11 @@ func (parser *LogFileParser) Store(logfile *IndexableLogFile) error {
 	}
 	line1mapbytes, _ := json.Marshal(line1map)
 	if err := parser.tmpHostFiles[logfile.Index()].Append(string(line1mapbytes)); err != nil {
-		log.Println(err.Error())
+		errLogger.Println(err.Error())
 		return err
 	}
 	if err := parser.tmpHostFiles[logfile.Index()].Append(string(jsonBytes)); err != nil {
-		log.Println(err.Error())
+		errLogger.Println(err.Error())
 		return err
 	}
 	return nil
@@ -343,7 +346,7 @@ func (parser *LogFileParser) ParseLine(line string, filename string, linenumber 
 	err := json.Unmarshal([]byte(line), rawLogEntry)
 
 	if err != nil {
-		log.Printf("unable to parse json '%s', err: %v", line, err)
+		errLogger.Printf("unable to parse json '%s', err: %v", line, err)
 		return nil, err
 	}
 
@@ -352,7 +355,7 @@ func (parser *LogFileParser) ParseLine(line string, filename string, linenumber 
 	converted, err := rawLogEntry.ToIndexable(id, parser.GeoipReader)
 
 	if err != nil {
-		log.Printf("%s => %v", line, err)
+		errLogger.Printf("%s => %v", line, err)
 		return nil, err
 	}
 
