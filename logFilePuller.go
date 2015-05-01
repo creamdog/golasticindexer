@@ -88,16 +88,7 @@ func (puller *LogFilePuller) Run() {
 
 	puller.RestoreState()
 
-	str := time.Now().UTC().Format("2006-01-02")
-	t, err := time.Parse("2006-01-02", str)
-	if err != nil {
-		panic(err)
-	}
-	sevenDaysAgo := t.UTC().Add(24 * 1 * -time.Hour)
-
 	keyDateRegexp := regexp.MustCompile("^/?nginx/access/(?P<date>[0-9-]+)/.+$")
-
-	infoLogger.Printf("sevenDaysAgo: %s", sevenDaysAgo.Format(time.RFC3339))
 
 	for {
 		puller.StoreState()
@@ -139,11 +130,6 @@ func (puller *LogFilePuller) Run() {
 				puller.lastDate = keyDate
 			}
 
-			if keyDate.Unix() < sevenDaysAgo.Unix() {
-				infoLogger.Printf("skipping file: %s, modified: %s, too old", value.Key, value.LastModified)
-				continue
-			}
-
 			if _, exists := puller.processedKeys[value.Key]; exists {
 				infoLogger.Printf("skipping file: %s, modified: %s, already processed", value.Key, value.LastModified)
 				continue
@@ -169,6 +155,7 @@ func (puller *LogFilePuller) Run() {
 					infoLogger.Printf("sending file %s to queue. %v", file, len(puller.fileChannel))
 					puller.fileChannel <- file
 				} else {
+					delete(puller.processedKeys, value.Key)
 					errLogger.Printf("%v", err)
 				}
 			}(downloaders)
