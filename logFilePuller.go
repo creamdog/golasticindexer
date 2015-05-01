@@ -94,7 +94,7 @@ func (puller *LogFilePuller) Run() {
 	if err != nil {
 		panic(err)
 	}
-	sevenDaysAgo := t.UTC().Add(24 * 7 * -time.Hour)
+	sevenDaysAgo := t.UTC().Add(24 * 1 * -time.Hour)
 
 	keyDateRegexp := regexp.MustCompile("^/?nginx/access/(?P<date>[0-9-]+)/.+$")
 
@@ -131,7 +131,7 @@ func (puller *LogFilePuller) Run() {
 				continue
 			}
 
-			if keyDate.Unix() < puller.lastDate.Add(-25*time.Hour).Unix() {
+			if keyDate.Unix() < puller.lastDate.AddDate(0, 0, -1).Unix() {
 				log.Printf("skipping file: %s, modified: %s, too old", value.Key, value.LastModified)
 				continue
 			}
@@ -148,9 +148,9 @@ func (puller *LogFilePuller) Run() {
 			if _, exists := puller.processedKeys[value.Key]; exists {
 				log.Printf("skipping file: %s, modified: %s, already processed", value.Key, value.LastModified)
 				continue
+			} else {
+				puller.processedKeys[value.Key] = time.Now()
 			}
-
-			puller.processedKeys[value.Key] = time.Now()
 
 			/*
 				fileTime, _ := time.Parse(time.RFC3339, value.LastModified)
@@ -175,20 +175,15 @@ func (puller *LogFilePuller) Run() {
 			}(downloaders)
 		}
 
-		if len(result.Contents) == 0 {
-			log.Printf("no new data, sleeping for 5 minutes")
-			time.Sleep(5 * time.Minute)
-		}
-
 		log.Printf("result.NextMarker: %s", result.NextMarker)
 		log.Printf("puller.lastDate: %v, puller.marker: %v, puller.processedKeys: %v", puller.lastDate, puller.marker, len(puller.processedKeys))
+
+		puller.marker = ""
 
 		if result.IsTruncated {
 			log.Printf("listing more: %s", result.NextMarker)
 			puller.marker = result.NextMarker
 		} else {
-			//break
-			puller.marker = ""
 			log.Printf("no more data, sleeping for 5 minutes and starting again")
 			time.Sleep(5 * time.Minute)
 		}
