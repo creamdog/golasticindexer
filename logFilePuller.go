@@ -145,19 +145,19 @@ func (puller *LogFilePuller) Run() {
 			*/
 
 			downloaders <- 1
-			go func(done chan int) {
+			go func(done chan int, key string, p *LogFilePuller) {
 				defer func() {
 					<-done
 				}()
-				file, err := puller.Download(value.Key)
+				file, err := p.Download(key)
 				if err == nil {
-					infoLogger.Printf("sending file %s to queue. %v", file, len(puller.fileChannel))
-					puller.fileChannel <- file
+					infoLogger.Printf("sending file %s to queue. %v", file, len(p.fileChannel))
+					p.fileChannel <- file
 				} else {
-					delete(puller.processedKeys, value.Key)
+					delete(p.processedKeys, key)
 					errLogger.Printf("%v", err)
 				}
-			}(downloaders)
+			}(downloaders, value.Key, puller)
 		}
 
 		infoLogger.Printf("result.NextMarker: %s", result.NextMarker)
