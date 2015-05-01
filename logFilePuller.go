@@ -7,7 +7,6 @@ import (
 	"github.com/crowdmob/goamz/s3"
 	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"path"
 	"regexp"
@@ -98,11 +97,11 @@ func (puller *LogFilePuller) Run() {
 
 	keyDateRegexp := regexp.MustCompile("^/?nginx/access/(?P<date>[0-9-]+)/.+$")
 
-	log.Printf("sevenDaysAgo: %s", sevenDaysAgo.Format(time.RFC3339))
+	infoLogger.Printf("sevenDaysAgo: %s", sevenDaysAgo.Format(time.RFC3339))
 
 	for {
 		puller.StoreState()
-		log.Printf("listing files. marker: %s", puller.marker)
+		infoLogger.Printf("listing files. marker: %s", puller.marker)
 		s3client := s3.New(puller.auth, aws.USEast)
 		bucket := s3client.Bucket(puller.bucket)
 		bucket.ReadTimeout = time.Second * 5
@@ -120,7 +119,7 @@ func (puller *LogFilePuller) Run() {
 			puller.marker = value.Key
 
 			keyDateMatch := keyDateRegexp.FindStringSubmatch(value.Key)
-			log.Printf("%v -> %v", value.Key, keyDateMatch)
+			infoLogger.Printf("%v -> %v", value.Key, keyDateMatch)
 			result := make(map[string]string)
 			for i, name := range keyDateRegexp.SubexpNames() {
 				result[name] = keyDateMatch[i]
@@ -132,7 +131,7 @@ func (puller *LogFilePuller) Run() {
 			}
 
 			if keyDate.Unix() < puller.lastDate.AddDate(0, 0, -1).Unix() {
-				log.Printf("skipping file: %s, modified: %s, too old", value.Key, value.LastModified)
+				infoLogger.Printf("skipping file: %s, modified: %s, too old", value.Key, value.LastModified)
 				continue
 			}
 
@@ -141,12 +140,12 @@ func (puller *LogFilePuller) Run() {
 			}
 
 			if keyDate.Unix() < sevenDaysAgo.Unix() {
-				log.Printf("skipping file: %s, modified: %s, too old", value.Key, value.LastModified)
+				infoLogger.Printf("skipping file: %s, modified: %s, too old", value.Key, value.LastModified)
 				continue
 			}
 
 			if _, exists := puller.processedKeys[value.Key]; exists {
-				log.Printf("skipping file: %s, modified: %s, already processed", value.Key, value.LastModified)
+				infoLogger.Printf("skipping file: %s, modified: %s, already processed", value.Key, value.LastModified)
 				continue
 			} else {
 				puller.processedKeys[value.Key] = time.Now()
@@ -155,7 +154,7 @@ func (puller *LogFilePuller) Run() {
 			/*
 				fileTime, _ := time.Parse(time.RFC3339, value.LastModified)
 				if fileTime.Unix() < sevenDaysAgo.Unix() {
-					log.Printf("skipping file: %s, modified: %s", value.Key, value.LastModified)
+					infoLogger.Printf("skipping file: %s, modified: %s", value.Key, value.LastModified)
 					continue
 				}
 			*/
@@ -167,7 +166,7 @@ func (puller *LogFilePuller) Run() {
 				}()
 				file, err := puller.Download(value.Key)
 				if err == nil {
-					log.Printf("sending file %s to queue. %v", file, len(puller.fileChannel))
+					infoLogger.Printf("sending file %s to queue. %v", file, len(puller.fileChannel))
 					puller.fileChannel <- file
 				} else {
 					errLogger.Printf("%v", err)
@@ -175,16 +174,16 @@ func (puller *LogFilePuller) Run() {
 			}(downloaders)
 		}
 
-		log.Printf("result.NextMarker: %s", result.NextMarker)
-		log.Printf("puller.lastDate: %v, puller.marker: %v, puller.processedKeys: %v", puller.lastDate, puller.marker, len(puller.processedKeys))
+		infoLogger.Printf("result.NextMarker: %s", result.NextMarker)
+		infoLogger.Printf("puller.lastDate: %v, puller.marker: %v, puller.processedKeys: %v", puller.lastDate, puller.marker, len(puller.processedKeys))
 
 		puller.marker = ""
 
 		if result.IsTruncated {
-			log.Printf("listing more: %s", result.NextMarker)
+			infoLogger.Printf("listing more: %s", result.NextMarker)
 			puller.marker = result.NextMarker
 		} else {
-			log.Printf("no more data, sleeping for 5 minutes and starting again")
+			infoLogger.Printf("no more data, sleeping for 5 minutes and starting again")
 			time.Sleep(5 * time.Minute)
 		}
 	}
@@ -208,7 +207,7 @@ func (puller *LogFilePuller) Download(key string) (string, error) {
 	os.MkdirAll(localFilePath, 0700)
 	localFilePath = path.Join(puller.tmpDir, key)
 
-	log.Printf("downloading '%s' -> '%s'", key, localFilePath)
+	infoLogger.Printf("downloading '%s' -> '%s'", key, localFilePath)
 
 	writer, err := os.Create(localFilePath)
 	if err != nil {

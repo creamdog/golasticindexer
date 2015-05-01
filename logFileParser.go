@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/oschwald/geoip2-golang"
-	"log"
 	"net"
 	"net/url"
 	"os"
@@ -203,7 +202,7 @@ func (parser *LogFileParser) Watch(fileChannel chan string) {
 		select {
 		case file := <-fileChannel:
 			threads <- 1
-			log.Printf("got file %s", file)
+			infoLogger.Printf("got file %s", file)
 			go run(file, threads, parser)
 			break
 		case <-timeout:
@@ -214,7 +213,7 @@ func (parser *LogFileParser) Watch(fileChannel chan string) {
 
 func (parser *LogFileParser) ParseFile(filePath string) error {
 
-	log.Printf("parsing file %s", filePath)
+	infoLogger.Printf("parsing file %s", filePath)
 
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -253,9 +252,9 @@ func (parser *LogFileParser) ParseFile(filePath string) error {
 }
 
 func (parser *LogFileParser) Flush() {
-	log.Printf("flushing: %v", parser.Id)
+	infoLogger.Printf("flushing: %v", parser.Id)
 	for _, value := range parser.tmpHostFiles {
-		log.Printf("flushing file '%s'", value.Path)
+		infoLogger.Printf("flushing file '%s'", value.Path)
 		value.Flush()
 		parser.Output <- value
 	}
@@ -270,7 +269,7 @@ func (parser *LogFileParser) Store(logfile *IndexableLogFile) error {
 	if v, exists := parser.tmpHostFiles[logfile.Index()]; !exists {
 		parser.tmpHostFiles[logfile.Index()] = parser.NewTmpFile(logfile)
 	} else if v.Lines > 20000 {
-		log.Printf("purging file '%s'", v.Path)
+		infoLogger.Printf("purging file '%s'", v.Path)
 		v.Flush()
 		parser.Output <- v
 		parser.tmpHostFiles[logfile.Index()] = parser.NewTmpFile(logfile)
@@ -304,7 +303,7 @@ func (appender *HostLogFile) Append(line string) error {
 
 func (appender *HostLogFile) Flush() error {
 
-	log.Printf("flushing %v lines -> %s", len(appender.Buffer), appender.Path)
+	infoLogger.Printf("flushing %v lines -> %s", len(appender.Buffer), appender.Path)
 
 	f, err := os.OpenFile(appender.Path, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0600)
 	if err != nil {

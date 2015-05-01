@@ -173,7 +173,7 @@ func (eclient *ElasticSearchClient) CreateIndex(index string) error {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Content-Length", fmt.Sprintf("%v", len(jsonPayload)))
 
-	log.Printf("creating index %s using mapping: %s", index, jsonPayload)
+	infoLogger.Printf("creating index %s using mapping: %s", index, jsonPayload)
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -185,11 +185,11 @@ func (eclient *ElasticSearchClient) CreateIndex(index string) error {
 
 	if resp.StatusCode != 200 {
 		body, _ := ioutil.ReadAll(resp.Body)
-		log.Println("response Body:", string(body))
+		infoLogger.Println("response Body:", string(body))
 		return fmt.Errorf("unable to create index: %s -> %s", index, string(body))
 	}
 
-	log.Printf("created index: %s -> %s", index, url)
+	infoLogger.Printf("created index: %s -> %s", index, url)
 
 	knownindexes[index] = time.Now()
 
@@ -201,7 +201,7 @@ func (eclient *ElasticSearchClient) Check(index string) (bool, error) {
 	index = strings.ToLower(strings.TrimSpace(index))
 
 	url := fmt.Sprintf("%s/%s?pretty", eclient.Url, index)
-	fmt.Println("checking: ", url)
+	infoLogger.Println("checking: ", url)
 
 	req, err := http.NewRequest("GET", url, nil)
 	req.Header.Set("Authorization", eclient.BasicAuth)
@@ -217,12 +217,12 @@ func (eclient *ElasticSearchClient) Check(index string) (bool, error) {
 	switch resp.StatusCode {
 	case 200:
 		knownindexes[index] = time.Now()
-		log.Printf("index '%s' exists", index)
+		infoLogger.Printf("index '%s' exists", index)
 		eclient.Indexes[strings.ToLower(strings.TrimSpace(index))] = strings.ToLower(strings.TrimSpace(index))
 		return true, nil
 		break
 	case 404:
-		log.Printf("index '%s' doesn't exist", index)
+		infoLogger.Printf("index '%s' doesn't exist", index)
 		break
 	default:
 		body, _ := ioutil.ReadAll(resp.Body)
@@ -235,7 +235,7 @@ func (eclient *ElasticSearchClient) Check(index string) (bool, error) {
 				}
 			}
 		}
-		log.Println("response Body:", string(body))
+		errLogger.Println("response Body:", string(body))
 		return false, fmt.Errorf("%s", string(body))
 		break
 	}
@@ -246,7 +246,7 @@ func (eclient *ElasticSearchClient) Check(index string) (bool, error) {
 func (eclient *ElasticSearchClient) Upload(filename string, index string) error {
 
 	if _, exists := knownindexes[index]; !exists {
-		log.Printf("unknown index %s", index)
+		infoLogger.Printf("unknown index %s", index)
 		if err := eclient.CreateIndex(index); err != nil {
 			panic(err)
 		}
@@ -261,7 +261,7 @@ func (eclient *ElasticSearchClient) Upload(filename string, index string) error 
 	defer file.Close()
 
 	url := fmt.Sprintf("%s/%s/accesslogentry/_bulk?pretty", eclient.Url, index)
-	log.Printf("uploading: %s -> %s", filename, url)
+	infoLogger.Printf("uploading: %s -> %s", filename, url)
 
 	req, err := http.NewRequest("POST", url, file)
 	req.Header.Set("Authorization", eclient.BasicAuth)
@@ -278,11 +278,11 @@ func (eclient *ElasticSearchClient) Upload(filename string, index string) error 
 
 	if resp.StatusCode != 200 {
 		body, _ := ioutil.ReadAll(resp.Body)
-		log.Println("response Body:", string(body))
+		infoLogger.Println("response Body:", string(body))
 		return fmt.Errorf("%s", string(body))
 	}
 
-	log.Printf("finished uploading: %s -> %s", filename, url)
+	infoLogger.Printf("finished uploading: %s -> %s", filename, url)
 
 	return nil
 }

@@ -9,6 +9,7 @@ import (
 )
 
 var errLogger *log.Logger = log.New(os.Stderr, "ERROR: ", log.Llongfile|log.Ldate|log.Ltime)
+var infoLogger *log.Logger = log.New(os.Stdout, "", log.Llongfile|log.Ldate|log.Ltime)
 
 func main() {
 
@@ -16,7 +17,7 @@ func main() {
 
 	geoip2Reader, err := geoip2.Open("GeoLite2-City.mmdb")
 	if err != nil {
-		log.Println(err.Error())
+		errLogger.Println(err.Error())
 		return
 	}
 
@@ -37,7 +38,7 @@ func main() {
 	upload := func(file *HostLogFile, done chan int) {
 		defer func() {
 			<-done
-			log.Printf("removing: %s", file.Path)
+			infoLogger.Printf("removing: %s", file.Path)
 			os.Remove(file.Path)
 		}()
 		indexer := NewElasticSearchClient(config)
