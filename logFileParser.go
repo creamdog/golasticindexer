@@ -181,10 +181,13 @@ func (parser *LogFileParser) Watch(fileChannel chan string) {
 
 	threads := make(chan int, 8)
 	run := func(file string, done chan int, parser *LogFileParser) {
+		time.Sleep(2 * time.Second)
 		p := NewLogFileParser(parser.Output, parser.GeoipReader, parser.config)
 		defer func() {
 			p.Flush()
-			os.Remove(file)
+			if err := os.Remove(file); err != nil {
+				errLogger.Printf("unable to delete file: %v, error: %v", err)
+			}
 			<-done
 		}()
 		if err := p.ParseFile(file); err != nil {

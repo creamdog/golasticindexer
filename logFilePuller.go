@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/crowdmob/goamz/aws"
 	"github.com/crowdmob/goamz/s3"
 	"io"
@@ -100,7 +99,7 @@ func (puller *LogFilePuller) Run() {
 		//result, err := bucket.List(puller.prefix, "", puller.marker, 1000)
 		result, err := bucket.List(puller.prefix, "", puller.marker, 1000)
 		if err != nil {
-			fmt.Println(err.Error())
+			errLogger.Printf("%v", err)
 			continue
 		}
 
@@ -202,9 +201,11 @@ func (puller *LogFilePuller) Download(key string) (string, error) {
 	}
 	defer writer.Close()
 
-	io.Copy(writer, reader)
-
-	fmt.Printf("downloaded '%s'\n", localFilePath)
+	if num, err := io.Copy(writer, reader); err != nil {
+		return "", err
+	} else {
+		infoLogger.Printf("downloaded '%s', bytes: %v", localFilePath, num)
+	}
 
 	return localFilePath, nil
 }
