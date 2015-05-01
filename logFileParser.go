@@ -186,7 +186,7 @@ func (parser *LogFileParser) Watch(fileChannel chan string) {
 		defer func() {
 			p.Flush()
 			if err := os.Remove(file); err != nil {
-				errLogger.Printf("unable to delete file: %v, error: %v", err)
+				errLogger.Printf("unable to delete file: %v, error: %v", file, err)
 			}
 			<-done
 		}()
@@ -194,21 +194,12 @@ func (parser *LogFileParser) Watch(fileChannel chan string) {
 			errLogger.Printf("unbale to parse file: %v, error: %v", file, err)
 		}
 	}
-
-	timeout := make(chan int, 1)
-
 	for {
-		go func() {
-			time.Sleep(1 * time.Second)
-			timeout <- 1
-		}()
 		select {
 		case file := <-fileChannel:
 			threads <- 1
 			infoLogger.Printf("got file %s", file)
 			go run(file, threads, parser)
-			break
-		case <-timeout:
 			break
 		}
 	}
